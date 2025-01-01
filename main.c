@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <time.h>
 #define GREEN "\033[1;32m"
 #define YELLOW "\033[1;33m"
 #define RESET "\033[0m"
@@ -30,12 +31,20 @@ typedef struct {
     int recordCount;
 } WordsList;
 
+typedef struct {
+    bool correct;
+    bool misplaced;
+} LetterPlacement;
+
+
 // Deklaracje użytych funkcji programu
 int countRecords(FILE* fp);
 WordsList readWordlist(const char* filename);
 int findGuessInWordlist(const char* guess, WordsList words);
 int findLetterInWord(char letter, const char* word);
 void displayHint(const char* guess, const char* drawn);
+bool enforceHint(const char* guess, const char* drawn, LetterPlacement* letterPlacementInfo, bool** missedLetters);
+char* drawWord(WordsList words);
 bool game(WordsList words, bool hardmode);
 void initiateGame(WordsList words);
 void printWordlist(WordsList words);
@@ -132,23 +141,96 @@ int findLetterInWord(char letter, const char* word) {
 
 void displayHint(const char* guess, const char* drawn) {
     for (int i=0; i < strlen(guess); i++) {
-        if (guess[i] == drawn[i])
+        if (guess[i] == drawn[i]) {
             printf(GREEN "%c" RESET, guess[i]);
-        else if (findLetterInWord(guess[i], drawn) != -1)
+        }
+        else if (findLetterInWord(guess[i], drawn) != -1) {
             printf(YELLOW "%c" RESET, guess[i]);
-        else
+        }
+        else {
             printf("%c", guess[i]);
+        }
     }
     printf("\n");
 }
 
-bool game(const WordsList words, const bool hardmode) {
-    char* guess = (char*)malloc(10);
-    const char* drawnWord = (char*)malloc(6);
-    strcpy(drawnWord, words.wordlist[1].word);
+bool enforceHint(const char* guess, const char* drawn, LetterPlacement* letterPlacementInfo, bool** missedLetters) {
+    bool misplacedExists = false;
+    bool enforce = false;
 
-    if(hardmode)
+    for (int i=0; i<5;i++) {
+        misplacedExists = false;
+        if ((*missedLetters)[guess[i]-'a']) {
+            printf("Nie mozna uzywac liter oznaczonych jako niewystepujace w slowie!\n");
+            enforce = true;
+            goto END;
+        }
+        if (letterPlacementInfo[i].correct) {
+            if (guess[i] != drawn[i]) {
+                printf("Znaki prawidlowo odgadniete musza pozostac na swoim miejscu!\n");
+                enforce = true;
+                goto END;
+            }
+        }
+        else if (letterPlacementInfo[i].misplaced) {
+            for (int j=0;j<5;j++) {
+                if (drawn[i] == guess[j] && !letterPlacementInfo[j].correct)
+                    misplacedExists = true;
+            }
+            if (!misplacedExists) {
+                printf("Wszystkie litery oznaczone jako znalezione na zlym miejscu musza zostac wykorzystane!\n");
+                enforce = true;
+                goto END;
+            }
+        }
+    }
+
+    END:
+    for (int i=0;i<5;i ++) {
+        if (guess[i] == drawn[i])
+            letterPlacementInfo[i].correct = true;
+        else if (findLetterInWord(guess[i], drawn) != -1)
+            letterPlacementInfo[i].misplaced = true;
+        else
+            (*missedLetters)[guess[i]-'a'] = true;
+    }
+
+    if (enforce)
+        return false;
+
+    return true;
+}
+
+char* drawWord(const WordsList words) {
+    char* draw = (char*)malloc(6);
+    unsigned int seed = time(0);
+    int randomIndex = rand_r(&seed) % words.recordCount+1;
+
+    printf("Wylosowany indeks: %d\n", randomIndex);
+
+    strcpy(draw, words.wordlist[randomIndex].word);
+
+    return draw;
+}
+
+bool game(const WordsList words, const bool hardmode) {
+    bool* missedLetters = (bool*)malloc(26);
+    for (int i=0;i<26;i++) {
+        missedLetters[i] = false;
+    }
+    char* guess = (char*)malloc(10);
+    char* drawnWord = (char*)malloc(6);
+    //strcpy(drawnWord, words.wordlist[6].word);
+    strcpy(drawnWord, drawWord(words));
+    LetterPlacement* letterPlacementInfo = (LetterPlacement*)malloc(5*sizeof(LetterPlacement));
+    for (int i=0; i<5;i++) {
+        letterPlacementInfo[i].correct = false;
+        letterPlacementInfo[i].misplaced = false;
+    }
+
+    if(hardmode) {
         printf("Wybrano tryb trudny.\n");
+    }
     else
         printf("Wybrano tryb latwy\n");
 
@@ -165,7 +247,16 @@ bool game(const WordsList words, const bool hardmode) {
             return true;
         }
         else {
-            displayHint(guess, drawnWord);
+            if (hardmode) {
+                if (!enforceHint(guess, drawnWord, letterPlacementInfo, &missedLetters)) {
+                    guesses++;
+                    printf("Zastosuj sie do podanych wskazowek!\n");
+                } else {
+                    displayHint(guess,drawnWord);
+                }
+            }
+            else
+                displayHint(guess, drawnWord);
         }
     }
     printf("Koniec gry!\n");
