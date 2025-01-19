@@ -11,6 +11,7 @@
 // LINK: https://algorytmion.ms.polsl.pl/storage/files/Zadania2023.pdf
 
 
+#include <iso646.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -33,16 +34,23 @@ typedef struct {
 
 typedef struct {
     bool correct;
-    bool misplaced;
+    char misplaced;
 } LetterPlacement;
+
+typedef struct {
+    int drawnCount;
+    bool correct;
+    bool missed;
+    char misplaced;
+} LetterMetadata;
 
 
 // Deklaracje użytych funkcji programu
 int countRecords(FILE* fp);
 WordsList readWordlist(const char* filename);
 int findGuessInWordlist(const char* guess, WordsList words);
-int findLetterInWord(char letter, const char* word);
-void displayHint(const char* guess, const char* drawn);
+int findLetterInWord(char letter, const char* word, LetterPlacement* letterPlacementInfo);
+void displayHint(const char* guess, const char* drawn, LetterPlacement* letterPlacementInfo);
 bool enforceHint(const char* guess, const char* drawn, LetterPlacement* letterPlacementInfo, bool** missedLetters);
 char* drawWord(WordsList words);
 bool game(WordsList words, bool hardmode);
@@ -56,8 +64,8 @@ int main(void) {
     WordsList words = readWordlist("slownik.txt");
     //printWordlist(words);
     initiateGame(words);
-    freeWordlist(&words.wordlist);
-    free(words.wordlist);
+    //freeWordlist(&words.wordlist);
+    //free(words.wordlist);
     return 0;
 }
 
@@ -131,21 +139,43 @@ int findGuessInWordlist(const char* guess, WordsList words) {
     return -1;
 }
 
-int findLetterInWord(char letter, const char* word) {
-    for (int i=0;i<strlen(word);i++) {
-        if (letter == word[i])
+int findLetterInWord(char letter, const char* word, LetterPlacement* letterPlacementInfo) {
+    //int letterCount = 0;
+    for (int i=0;i<5;i++) {
+        if (letter == word[i] && !letterPlacementInfo[i].correct)
             return i;
+            //letterCount++;
     }
+
+    //return letterCount;
     return -1;
 }
 
-void displayHint(const char* guess, const char* drawn) {
-    for (int i=0; i < strlen(guess); i++) {
+int letterOccurenceCounter(const char* word, char letter) {
+    int count=0;
+    for (int i=0;i<5;i++) {
+        if (letter == word[i])
+            count++;
+    }
+    return count;
+}
+
+void displayHint(const char* guess, const char* drawn, LetterPlacement* letterPlacementInfo) {
+    char doubleLetter;
+    for (int i=0; i <5; i++) {
+        doubleLetter = false;
         if (guess[i] == drawn[i]) {
             printf(GREEN "%c" RESET, guess[i]);
         }
-        else if (findLetterInWord(guess[i], drawn) != -1) {
-            printf(YELLOW "%c" RESET, guess[i]);
+        else if (findLetterInWord(guess[i], drawn, letterPlacementInfo) != -1) {
+            for (int j=0;j<i;j++) {
+                if (guess[i]==guess[j] && letterOccurenceCounter(drawn, guess[i]) == 1) {
+                    printf("%c", guess[i]);
+                    doubleLetter = true;
+                }
+            }
+            if (!doubleLetter)
+                printf(YELLOW "%c" RESET, guess[i]);
         }
         else {
             printf("%c", guess[i]);
@@ -157,54 +187,76 @@ void displayHint(const char* guess, const char* drawn) {
 bool enforceHint(const char* guess, const char* drawn, LetterPlacement* letterPlacementInfo, bool** missedLetters) {
     bool misplacedExists = false;
     bool enforce = false;
+    bool* notices = (bool*)malloc(4);
+    notices[0] = false;
+    notices[1] = false;
+    notices[2] = false;
+    notices[3] = false;
 
     for (int i=0; i<5;i++) {
         misplacedExists = false;
-        if ((*missedLetters)[guess[i]-'a']) {
+        if ((*missedLetters)[guess[i]-'a'] && !notices[0]) {
             printf("Nie mozna uzywac liter oznaczonych jako niewystepujace w slowie!\n");
             enforce = true;
-            goto END;
+            notices[0] = true;
         }
-        if (letterPlacementInfo[i].correct) {
+        if (letterPlacementInfo[i].correct && !notices[1]) {
             if (guess[i] != drawn[i]) {
                 printf("Znaki prawidlowo odgadniete musza pozostac na swoim miejscu!\n");
                 enforce = true;
-                goto END;
+                notices[1] = true;
             }
         }
-        else if (letterPlacementInfo[i].misplaced) {
+        else if (letterPlacementInfo[i].misplaced != '0' && !notices[2]) {
             for (int j=0;j<5;j++) {
-                if (drawn[i] == guess[j] && !letterPlacementInfo[j].correct)
+                if (drawn[j] == letterPlacementInfo[i].misplaced && findLetterInWord(letterPlacementInfo[i].misplaced, guess,letterPlacementInfo) != -1)
                     misplacedExists = true;
             }
             if (!misplacedExists) {
                 printf("Wszystkie litery oznaczone jako znalezione na zlym miejscu musza zostac wykorzystane!\n");
                 enforce = true;
-                goto END;
+                notices[2] = true;
             }
         }
-    }
-
-    END:
-    for (int i=0;i<5;i ++) {
-        if (guess[i] == drawn[i])
-            letterPlacementInfo[i].correct = true;
-        else if (findLetterInWord(guess[i], drawn) != -1)
-            letterPlacementInfo[i].misplaced = true;
-        else
-            (*missedLetters)[guess[i]-'a'] = true;
+        if (letterPlacementInfo[i].misplaced == guess[i] && !notices[3]) {
+            printf("Litery oznaczone jako występujące na złym miejscu, muszą zostać wpisane w innym miejscu!\n");
+            enforce = true;
+            notices[3] = true;
+        }
     }
 
     if (enforce)
         return false;
+
+    for (int i=0;i<5;i ++) {
+        if (guess[i] == drawn[i]) {
+            letterPlacementInfo[i].correct = true;
+            letterPlacementInfo[i].misplaced = '0';
+        }
+        else if (findLetterInWord(guess[i], drawn,letterPlacementInfo) != -1) {
+            letterPlacementInfo[i].correct = false;
+            letterPlacementInfo[i].misplaced = guess[i];
+        }
+        else {
+            if (letterPlacementInfo[i].correct || letterPlacementInfo[i].misplaced != '0')
+                (*missedLetters)[guess[i]-'a'] = false;
+            else
+                (*missedLetters)[guess[i]-'a'] = true;
+        }
+    }
+
+    displayHint(guess,drawn,letterPlacementInfo);
 
     return true;
 }
 
 char* drawWord(const WordsList words) {
     char* draw = (char*)malloc(6);
-    unsigned int seed = time(0);
-    int randomIndex = rand_r(&seed) % words.recordCount+1;
+    unsigned int seed = time(nullptr);
+    int randomIndex;
+    do {
+        randomIndex = rand_r(&seed) % words.recordCount;
+    } while (words.wordlist[randomIndex].guessed == true);
 
     printf("Wylosowany indeks: %d\n", randomIndex);
 
@@ -225,7 +277,7 @@ bool game(const WordsList words, const bool hardmode) {
     LetterPlacement* letterPlacementInfo = (LetterPlacement*)malloc(5*sizeof(LetterPlacement));
     for (int i=0; i<5;i++) {
         letterPlacementInfo[i].correct = false;
-        letterPlacementInfo[i].misplaced = false;
+        letterPlacementInfo[i].misplaced = '0';
     }
 
     if(hardmode) {
@@ -244,6 +296,7 @@ bool game(const WordsList words, const bool hardmode) {
         }
         if(strcmp(guess, drawnWord) == 0) {
             printf("Gratulacje! Odgadles slowo.\n");
+            words.wordlist[findGuessInWordlist(guess,words)].guessed = true;
             return true;
         }
         else {
@@ -251,12 +304,28 @@ bool game(const WordsList words, const bool hardmode) {
                 if (!enforceHint(guess, drawnWord, letterPlacementInfo, &missedLetters)) {
                     guesses++;
                     printf("Zastosuj sie do podanych wskazowek!\n");
-                } else {
-                    displayHint(guess,drawnWord);
                 }
             }
-            else
-                displayHint(guess, drawnWord);
+            else {
+                for (int i=0;i<5;i ++) {
+                    if (guess[i] == drawnWord[i]) {
+                        letterPlacementInfo[i].correct = true;
+                        letterPlacementInfo[i].misplaced = '0';
+                    }
+                    else if (findLetterInWord(guess[i], drawnWord,letterPlacementInfo) != -1) {
+                        letterPlacementInfo[i].correct = false;
+                        letterPlacementInfo[i].misplaced = guess[i];
+                    }
+                    else {
+                        if (letterPlacementInfo[i].correct || letterPlacementInfo[i].misplaced != '0')
+                            missedLetters[guess[i]-'a'] = false;
+                        else
+                            missedLetters[guess[i]-'a'] = true;
+                    }
+                }
+
+                displayHint(guess,drawnWord,letterPlacementInfo);
+            }
         }
     }
     printf("Koniec gry!\n");
