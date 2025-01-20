@@ -1,3 +1,14 @@
+// ===================================================================
+// ||                      Politechnika Śląska                      ||
+// ||                 Wydział Matematyki Stosowanej                 ||
+// ||           Informatyka I st. niestacjonarne Semestr I          ||
+// ||                   Projekt z Programowania I                   ||
+// ||                      Data: 28.12.2024 r.                      ||
+// ||                 Autor: Andrzej Machnik (316067)               ||
+// ||                    Tytuł projektu: Literalnie                 ||
+// ===================================================================
+// Realizacja zadania 5 z edycji konkursu "Algorytmion" z 2023 roku pt. "LITERALNIE"
+// LINK: https://algorytmion.ms.polsl.pl/storage/files/Zadania2023.pdf
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -50,7 +61,6 @@ void initiateGame(WordlistMetadata data);
 void clearStdin();
 
 
-
 // Funkcja glowna
 int main(void) {
     setlocale(LC_ALL, "UTF-8.pl_PL");
@@ -61,9 +71,7 @@ int main(void) {
     return 0;
 }
 
-
 // DEFINICJE ZADEKLAROWANYCH WYZEJ FUNKCJI
-
 void freeWordlistMetadata(WordlistMetadata* wordlistMetadata) {
     for (int i=0; i < (*wordlistMetadata).recordCount; i++) {
         WordMetadata* wordMetadata = &(*wordlistMetadata).wordlist[i];
@@ -103,7 +111,6 @@ int countNoOfRecords(FILE* fp) {
         }
     }
     free(buffer);
-
     fclose(fp);
     return noOfRecords;
 }
@@ -113,7 +120,6 @@ WordlistMetadata readWordlist(const char* filename) {
     WordlistMetadata data;
     data.wordlist = NULL;
     data.recordCount = 0;
-
     if (!fp) {
         fprintf(stderr, "Nie można odczytać pliku: %s", filename);
         return data;
@@ -337,7 +343,6 @@ bool game(const WordlistMetadata data, const bool hardmode) {
         }
         letterPlacement.missed[i] = false;
     }
-
     if (hardmode) {
         printf("Wybrano tryb trudny.\n");
     } else {
@@ -347,26 +352,22 @@ bool game(const WordlistMetadata data, const bool hardmode) {
     for (int guesses = 6; guesses > 0; guesses--) {
         printf("Wpisz 5-literowe słowo. Masz jeszcze: %d prób.\n", guesses);
         scanf("%s", guess);
-
         if (guess == NULL || strlen(guess) != 5 || findGuess(guess, data) == -1) {
             guesses++;
             printf("Podane przez ciebie słowo nie ma 5 liter lub nie znajduje się w bazie programu. Spróbuj jeszcze raz!\n");
             continue;
         }
-
         if (strcmp(guess, drawn) == 0) {
             printf("Gratulacje! Odgadłeś prawidłowe słowo.\n");
             data.wordlist[findGuess(guess, data)].guessed = true;
             freeLetterPlacementInfo(letterPlacement);
             return true;
         }
-
         if (!isValidGuess(guess, drawn, data, letterPlacement, hardmode)) {
             guesses++;
             printf("Zastosuj się do podanych wskazówek!\n");
         }
     }
-
     printf("Koniec gry!\n");
     freeLetterPlacementInfo(letterPlacement);
     return false;
@@ -376,7 +377,6 @@ void initiateGame(const WordlistMetadata data) {
     if (data.wordlist == NULL) {
         return;
     }
-
     char mode;
     bool continueGame;
     printf("***LITERALNIE***\n");
