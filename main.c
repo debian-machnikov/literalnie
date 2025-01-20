@@ -26,6 +26,12 @@ typedef struct {
     bool* missed;
 } LetterPlacementInfo;
 
+void freeLetterPlacementInfo(LetterPlacementInfo letterPlacement) {
+    free(letterPlacement.correct);
+    free(letterPlacement.misplaced);
+    free(letterPlacement.missed);
+}
+
 int countNoOfRecords(FILE* fp) {
     int noOfRecords = 0;
     if (!fp) {
@@ -127,6 +133,9 @@ char* drawWord(WordlistMetadata data) {
         randomIndex = rand_r(&seed) % data.recordCount;
     } while (data.wordlist[randomIndex].guessed == true && drawCount < maxConsecutiveDraws);
 
+    //DEBUG
+    //randomIndex = 4245;
+
     printf("Wylosowany indeks: %d\n", randomIndex);
     strcpy(draw, data.wordlist[randomIndex].word);
     return draw;
@@ -165,16 +174,18 @@ bool isValidGuess(const char* guess, const char* drawn, WordlistMetadata data, L
                 notices[0] = true;
             }
             if (letterPlacement.correct[i] && !notices[1]) {
-                printf("Znaki, które zostały odgadnięte na prawidłowym miejscu, muszą na nim pozostać!\n");
-                enforce = true;
-                notices[1] = true;
+                if (guess[i] != drawn[i]) {
+                    printf("Znaki, które zostały odgadnięte na prawidłowym miejscu, muszą na nim pozostać!\n");
+                    enforce = true;
+                    notices[1] = true;
+                }
             }
             if (letterPlacement.misplaced[i] == guess[i] && !notices[2]) {
                 printf("Znaki, które zostały odgadnięte na nieprawidłowym miejscu, nie mogą się już w tym miejscu znajdować!\n");
                 enforce = true;
                 notices[2] = true;
             }
-            if (letterPlacement.misplaced[i] != '0' && notices[3]) {
+            if (letterPlacement.misplaced[i] != '0' && !notices[3]) {
                 for (int j = 0; j < 5; j++) {
                     if (drawn[j] == letterPlacement.misplaced[i] && findLetter(letterPlacement.misplaced[i], guess, data, letterPlacement) != -1) {
                         misplacedExists = true;
@@ -210,15 +221,29 @@ bool isValidGuess(const char* guess, const char* drawn, WordlistMetadata data, L
         guessLettersCount[guess[i]-'a']++;
     }
     for (int i = 0; i < 5; i++) {
-        if (guessLettersCount[guess[i]-'a'] == data.wordlist[findGuess(drawn[i], data)].lettersCount[guess[i]-'a']) {
-            if (findLetter(guess[i], drawn, data, letterPlacement) != -1) {
+        char drawnLetterCount = data.wordlist[findGuess(drawn, data)].lettersCount[guess[i]-'a'];
+        if (guessLettersCount[guess[i]-'a'] == drawnLetterCount) {
+            if (findLetter(guess[i], drawn, data, letterPlacement) != -1 && !letterPlacement.correct[i]) {
                 letterPlacement.correct[i] = false;
                 letterPlacement.misplaced[i] = guess[i];
                 letterPlacement.missed[guess[i]-'a'] = false;
             }
         }
-        else if (guessLettersCount[guess[i]-'a'] > data.wordlist[findGuess(drawn[i], data)].lettersCount[guess[i]-'a'] && data.wordlist[findGuess(drawn[i], data)].lettersCount[guess[i]-'a'] != 0) {
-            continue;
+        else if (guessLettersCount[guess[i]-'a'] > drawnLetterCount && drawnLetterCount > 0) {
+            if (findLetter(guess[i], drawn, data, letterPlacement) != -1 && !letterPlacement.correct[i]) {
+                letterPlacement.correct[i] = false;
+                letterPlacement.misplaced[i] = guess[i];
+                letterPlacement.missed[guess[i]-'a'] = false;
+                guessLettersCount[guess[i]-'a'] = 0;
+            }
+        }
+        else if (guessLettersCount[guess[i]-'a'] < drawnLetterCount && guessLettersCount[guess[i]-'a'] > 0) {
+            if (findLetter(guess[i], drawn, data, letterPlacement) != -1 && !letterPlacement.correct[i]) {
+                letterPlacement.correct[i] = false;
+                letterPlacement.misplaced[i] = guess[i];
+                letterPlacement.missed[guess[i]-'a'] = false;
+                guessLettersCount[guess[i]-'a'] = 0;
+            }
         }
     }
 
@@ -263,21 +288,18 @@ bool game(WordlistMetadata data, bool hardmode) {
         if (strcmp(guess, drawn) == 0) {
             printf("Gratulacje! Odgadłeś prawidłowe słowo.\n");
             data.wordlist[findGuess(guess, data)].guessed = true;
+            freeLetterPlacementInfo(letterPlacement);
             return true;
         }
 
         if (!isValidGuess(guess, drawn, data, letterPlacement, hardmode)) {
-            if (hardmode) {
-                guesses++;
-                printf("Zastosuj się do podanych wskazówek!\n");
-            }
-            else {
-                printFeedback(guess, data, letterPlacement);
-            }
+            guesses++;
+            printf("Zastosuj się do podanych wskazówek!\n");
         }
     }
 
     printf("Koniec gry!\n");
+    freeLetterPlacementInfo(letterPlacement);
     return false;
 }
 
@@ -343,14 +365,14 @@ void initiateGame(WordlistMetadata data) {
         }
 
         fflush(stdin);
-        clearStdin();
+        //clearStdin();
         printf("Czy chcesz kontynuować grę? (t/n): ");
         scanf("%c", &mode);
         if (mode == 't') {
             continueGame = true;
         }
         fflush(stdin);
-        clearStdin();
+        //clearStdin();
     } while (continueGame);
 }
 
