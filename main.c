@@ -205,7 +205,7 @@ char* drawWord(const WordlistMetadata data) {
     } while (data.wordlist[randomIndex].guessed == true && drawCount < maxConsecutiveDraws);
 
     //DEBUG
-    //randomIndex = 4245;
+    randomIndex = 4245;
 
     printf("Wylosowany indeks: %d\n", randomIndex);
     strcpy(draw, data.wordlist[randomIndex].word);
@@ -294,11 +294,16 @@ bool isValidGuess(const char* guess, const char* drawn, const WordlistMetadata d
     }
     for (int i = 0; i < 5; i++) {
         const int drawnLetterCount = data.wordlist[findGuess(drawn, data)].lettersCount[guess[i]-'a'];
-        if ((guessLettersCount[guess[i]-'a'] == drawnLetterCount) || (guessLettersCount[guess[i]-'a'] > drawnLetterCount && drawnLetterCount > 0) || (guessLettersCount[guess[i]-'a'] < drawnLetterCount && guessLettersCount[guess[i]-'a'] > 0)) {
+        const int condition1 = (guessLettersCount[guess[i]-'a'] == drawnLetterCount);
+        const int condition2 = (guessLettersCount[guess[i]-'a'] > drawnLetterCount && drawnLetterCount > 0);
+        const int condition3 = (guessLettersCount[guess[i]-'a'] < drawnLetterCount && guessLettersCount[guess[i]-'a'] > 0);
+
+        if ((condition1 + condition2 + condition3) == 1) {
             if (findLetter(guess[i], drawn, letterPlacement) != -1 && !letterPlacement.correct[i]) {
                 letterPlacement.correct[i] = false;
                 letterPlacement.misplaced[i] = guess[i];
                 letterPlacement.missed[guess[i]-'a'] = false;
+                guessLettersCount[guess[i]-'a'] = condition1 ? guessLettersCount[guess[i]-'a'] : 0;
             }
         }
     }
