@@ -1,136 +1,102 @@
-// ===================================================================
-// ||                      Politechnika Śląska                      ||
-// ||                 Wydział Matematyki Stosowanej                 ||
-// ||           Informatyka I st. niestacjonarne Semestr I          ||
-// ||                   Projekt z Programowania I                   ||
-// ||                      Data: 28.12.2024 r.                      ||
-// ||                 Autor: Andrzej Machnik (316067)               ||
-// ||                    Tytuł projektu: Literalnie                 ||
-// ===================================================================
-// Realizacja zadania 5 z edycji konkursu "Algorytmion" z 2023 roku pt. "LITERALNIE"
-// LINK: https://algorytmion.ms.polsl.pl/storage/files/Zadania2023.pdf
-
-
-#include <iso646.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <stdbool.h>
+#include <string.h>
 #include <time.h>
+#include <locale.h>
+
 #define GREEN "\033[1;32m"
 #define YELLOW "\033[1;33m"
 #define RESET "\033[0m"
 
-// Prosta struktura danych przechowująca słowo oraz informację czy zostało ono odgadnięte.
 typedef struct {
     char* word;
+    int* lettersCount;
     bool guessed;
-} Words;
+} WordMetadata;
 
 typedef struct {
-    Words* wordlist;
+    WordMetadata* wordlist;
     int recordCount;
-} WordsList;
+} WordlistMetadata;
 
 typedef struct {
-    bool correct;
-    char misplaced;
-} LetterPlacement;
+    bool* correct;
+    char* misplaced;
+    bool* missed;
+} LetterPlacementInfo;
 
-typedef struct {
-    int drawnCount;
-    bool correct;
-    bool missed;
-    char misplaced;
-} LetterMetadata;
+int countNoOfRecords(FILE* fp) {
+    int noOfRecords = 0;
+    if (!fp) {
+        fprintf(stderr, "Nie można odczytać pliku.");
+        return noOfRecords;
+    }
 
-
-// Deklaracje użytych funkcji programu
-int countRecords(FILE* fp);
-WordsList readWordlist(const char* filename);
-int findGuessInWordlist(const char* guess, WordsList words);
-int findLetterInWord(char letter, const char* word, LetterPlacement* letterPlacementInfo);
-void displayHint(const char* guess, const char* drawn, LetterPlacement* letterPlacementInfo);
-bool enforceHint(const char* guess, const char* drawn, LetterPlacement* letterPlacementInfo, bool** missedLetters);
-char* drawWord(WordsList words);
-bool game(WordsList words, bool hardmode);
-void initiateGame(WordsList words);
-void printWordlist(WordsList words);
-void freeWordlist(Words** wordlist);
-void clearStdin();
-
-// Funkcja Główna
-int main(void) {
-    WordsList words = readWordlist("slownik.txt");
-    //printWordlist(words);
-    initiateGame(words);
-    //freeWordlist(&words.wordlist);
-    //free(words.wordlist);
-    return 0;
-}
-
-
-// Definicje funkcji
-
-int countRecords(FILE* fp) {
-    int recordCount = 0;
     char* buffer = (char*)malloc(10);
-    //strcpy(buffer, "");
 
-    while(fscanf(fp, "%s", buffer) != EOF) {
-        if(strlen(buffer) == 5) {
-            recordCount++;
-            //printf("%s\n", buffer);
+    while (fscanf(fp, "%s", buffer) != EOF) {
+        if (strlen(buffer) == 5) {
+            noOfRecords++;
         }
     }
     free(buffer);
 
     fclose(fp);
-    return recordCount;
+    return noOfRecords;
 }
 
-
-WordsList readWordlist(const char* filename) {
+WordlistMetadata readWordlist(const char* filename) {
     FILE* fp = fopen(filename, "r");
-    WordsList words;
+    WordlistMetadata data;
 
-    if(!fp) {
-        fprintf(stderr, "Blad odczytu pliku!\n");
+    if (!fp) {
+        fprintf(stderr, "Nie można odczytać pliku: %s", filename);
+        return data;
     }
 
-    words.recordCount = countRecords(fp);
+    data.recordCount = countNoOfRecords(fp);
     fp = fopen(filename, "r");
-    words.wordlist = (Words*)malloc(words.recordCount*sizeof(words));
+    if (!fp) {
+        fprintf(stderr, "Nie można odczytać pliku: %s", filename);
+        return data;
+    }
+    data.wordlist = (WordMetadata*)malloc(data.recordCount * sizeof(WordMetadata));
 
     char* buffer = (char*)malloc(10);
     int i = 0;
-    while(i < words.recordCount && fscanf(fp, "%s", buffer) != EOF) {
-        words.wordlist[i].guessed = false;
-        words.wordlist[i].word = (char*)malloc(6);
+    while (i < data.recordCount && fscanf(fp, "%s", buffer) != EOF) {
+        data.wordlist[i].word = (char*)malloc(6);
+        data.wordlist[i].guessed = false;
+        data.wordlist[i].lettersCount = (int*)calloc(26, sizeof(int));
 
-        if(strlen(buffer) == 5) {
-            strcpy(words.wordlist[i].word, buffer);
+        if (strlen(buffer) == 5) {
+            strcpy(data.wordlist[i].word, buffer);
+            for (int j = 0; j < 5; j++) {
+                int letter = data.wordlist[i].word[j]-'a';
+                data.wordlist[i].lettersCount[letter]++;
+            }
             i++;
         }
     }
     free(buffer);
 
-    printf("Wczytano: %d rekordow.\n", words.recordCount);
+    printf("Wczytano: %d rekordów.\n", data.recordCount);
     fclose(fp);
-    return words;
+    return data;
 }
 
-// uzywam wyszukiwania binarnego, poniewaz z tresci zadania wiadomo, ze wyrazy w pliku sa posortowane alfabetycznie
-int findGuessInWordlist(const char* guess, WordsList words) {
+int findGuess(const char* guess, WordlistMetadata data) {
     int left = 0;
-    int right = words.recordCount - 1;
+    int right = data.recordCount - 1;
 
-    while(left <= right) {
-        int mid = left + (right-left) / 2;
-        int cmp = strcmp(words.wordlist[mid].word, guess);
-        if(cmp == 0)
+    while (left <= right) {
+        int mid = left + (right - left) / 2;
+        int cmp = strcmp(data.wordlist[mid].word, guess);
+
+        if (cmp == 0)
             return mid;
-        else if(cmp < 0)
+        else if (cmp < 0)
             left = mid+1;
         else
             right = mid-1;
@@ -139,256 +105,261 @@ int findGuessInWordlist(const char* guess, WordsList words) {
     return -1;
 }
 
-int findLetterInWord(char letter, const char* word, LetterPlacement* letterPlacementInfo) {
-    //int letterCount = 0;
-    for (int i=0;i<5;i++) {
-        if (letter == word[i] && !letterPlacementInfo[i].correct)
+int findLetter(char guessedLetter, const char* drawn, WordlistMetadata data, LetterPlacementInfo letterPlacement) {
+    for (int i = 0; i < 5; i++) {
+        if (guessedLetter == drawn[i] && !letterPlacement.correct[i]) {
             return i;
-            //letterCount++;
+        }
     }
-
-    //return letterCount;
     return -1;
 }
 
-int letterOccurenceCounter(const char* word, char letter) {
-    int count=0;
-    for (int i=0;i<5;i++) {
-        if (letter == word[i])
-            count++;
-    }
-    return count;
+char* drawWord(WordlistMetadata data) {
+    char* draw = (char*)malloc(6);
+    unsigned int seed = time(0);
+
+    int randomIndex;
+    const int maxConsecutiveDraws = 50;
+    int drawCount = 0;
+
+    do {
+        drawCount++;
+        randomIndex = rand_r(&seed) % data.recordCount;
+    } while (data.wordlist[randomIndex].guessed == true && drawCount < maxConsecutiveDraws);
+
+    printf("Wylosowany indeks: %d\n", randomIndex);
+    strcpy(draw, data.wordlist[randomIndex].word);
+    return draw;
 }
 
-void displayHint(const char* guess, const char* drawn, LetterPlacement* letterPlacementInfo) {
-    char doubleLetter;
-    for (int i=0; i <5; i++) {
-        doubleLetter = false;
-        if (guess[i] == drawn[i]) {
+void printFeedback(const char* guess, WordlistMetadata data, LetterPlacementInfo letterPlacement) {
+    for (int i = 0; i < 5; i++) {
+        if (letterPlacement.correct[i] == true) {
             printf(GREEN "%c" RESET, guess[i]);
         }
-        else if (findLetterInWord(guess[i], drawn, letterPlacementInfo) != -1) {
-            for (int j=0;j<i;j++) {
-                if (guess[i]==guess[j] && letterOccurenceCounter(drawn, guess[i]) == 1) {
-                    printf("%c", guess[i]);
-                    doubleLetter = true;
-                }
-            }
-            if (!doubleLetter)
-                printf(YELLOW "%c" RESET, guess[i]);
+        else if (letterPlacement.misplaced[i] != '0') {
+            printf(YELLOW "%c" RESET, guess[i]);
         }
         else {
-            printf("%c", guess[i]);
+            printf("%c",guess[i]);
         }
     }
     printf("\n");
 }
 
-bool enforceHint(const char* guess, const char* drawn, LetterPlacement* letterPlacementInfo, bool** missedLetters) {
-    bool misplacedExists = false;
+bool isValidGuess(const char* guess, const char* drawn, WordlistMetadata data, LetterPlacementInfo letterPlacement, bool hardmode) {
     bool enforce = false;
+    bool misplacedExists = false;
     bool* notices = (bool*)malloc(4);
     notices[0] = false;
     notices[1] = false;
     notices[2] = false;
     notices[3] = false;
 
-    for (int i=0; i<5;i++) {
-        misplacedExists = false;
-        if ((*missedLetters)[guess[i]-'a'] && !notices[0]) {
-            printf("Nie mozna uzywac liter oznaczonych jako niewystepujace w slowie!\n");
-            enforce = true;
-            notices[0] = true;
-        }
-        if (letterPlacementInfo[i].correct && !notices[1]) {
-            if (guess[i] != drawn[i]) {
-                printf("Znaki prawidlowo odgadniete musza pozostac na swoim miejscu!\n");
+    if (hardmode) {
+        for (int i = 0; i < 5; i++) {
+            misplacedExists = false;
+            if (letterPlacement.missed[guess[i]-'a'] && !notices[0]) {
+                printf("Nie można już używać liter, które zostały oznaczone jako niewystępujące w wyrazie!\n");
+                enforce = true;
+                notices[0] = true;
+            }
+            if (letterPlacement.correct[i] && !notices[1]) {
+                printf("Znaki, które zostały odgadnięte na prawidłowym miejscu, muszą na nim pozostać!\n");
                 enforce = true;
                 notices[1] = true;
             }
-        }
-        else if (letterPlacementInfo[i].misplaced != '0' && !notices[2]) {
-            for (int j=0;j<5;j++) {
-                if (drawn[j] == letterPlacementInfo[i].misplaced && findLetterInWord(letterPlacementInfo[i].misplaced, guess,letterPlacementInfo) != -1)
-                    misplacedExists = true;
-            }
-            if (!misplacedExists) {
-                printf("Wszystkie litery oznaczone jako znalezione na zlym miejscu musza zostac wykorzystane!\n");
+            if (letterPlacement.misplaced[i] == guess[i] && !notices[2]) {
+                printf("Znaki, które zostały odgadnięte na nieprawidłowym miejscu, nie mogą się już w tym miejscu znajdować!\n");
                 enforce = true;
                 notices[2] = true;
             }
+            if (letterPlacement.misplaced[i] != '0' && notices[3]) {
+                for (int j = 0; j < 5; j++) {
+                    if (drawn[j] == letterPlacement.misplaced[i] && findLetter(letterPlacement.misplaced[i], guess, data, letterPlacement) != -1) {
+                        misplacedExists = true;
+                    }
+                }
+                if (!misplacedExists) {
+                    printf("Znaki, które zostały odgadnięte na nieprawidłowym miejscu, muszą zostać użyte w następnych próbach!\n");
+                    enforce = true;
+                    notices[3] = true;
+                }
+            }
         }
-        if (letterPlacementInfo[i].misplaced == guess[i] && !notices[3]) {
-            printf("Litery oznaczone jako występujące na złym miejscu, muszą zostać wpisane w innym miejscu!\n");
-            enforce = true;
-            notices[3] = true;
+
+        if (enforce) {
+            return false;
         }
     }
 
-    if (enforce)
-        return false;
-
-    for (int i=0;i<5;i ++) {
+    for (int i = 0; i < 5; i++) {
         if (guess[i] == drawn[i]) {
-            letterPlacementInfo[i].correct = true;
-            letterPlacementInfo[i].misplaced = '0';
-        }
-        else if (findLetterInWord(guess[i], drawn,letterPlacementInfo) != -1) {
-            letterPlacementInfo[i].correct = false;
-            letterPlacementInfo[i].misplaced = guess[i];
+            letterPlacement.correct[i] = true;
+            letterPlacement.misplaced[i] = '0';
+            letterPlacement.missed[guess[i]-'a'] = false;
         }
         else {
-            if (letterPlacementInfo[i].correct || letterPlacementInfo[i].misplaced != '0')
-                (*missedLetters)[guess[i]-'a'] = false;
-            else
-                (*missedLetters)[guess[i]-'a'] = true;
+            letterPlacement.correct[i] = false;
+            letterPlacement.misplaced[i] = '0';
+            letterPlacement.missed[guess[i]-'a'] = true;
+        }
+    }
+    int* guessLettersCount = (int*)calloc(26,sizeof(int));
+    for (int i = 0; i < 5; i++) {
+        guessLettersCount[guess[i]-'a']++;
+    }
+    for (int i = 0; i < 5; i++) {
+        if (guessLettersCount[guess[i]-'a'] == data.wordlist[findGuess(drawn[i], data)].lettersCount[guess[i]-'a']) {
+            if (findLetter(guess[i], drawn, data, letterPlacement) != -1) {
+                letterPlacement.correct[i] = false;
+                letterPlacement.misplaced[i] = guess[i];
+                letterPlacement.missed[guess[i]-'a'] = false;
+            }
+        }
+        else if (guessLettersCount[guess[i]-'a'] > data.wordlist[findGuess(drawn[i], data)].lettersCount[guess[i]-'a'] && data.wordlist[findGuess(drawn[i], data)].lettersCount[guess[i]-'a'] != 0) {
+            continue;
         }
     }
 
-    displayHint(guess,drawn,letterPlacementInfo);
+    printFeedback(guess, data, letterPlacement);
 
     return true;
 }
 
-char* drawWord(const WordsList words) {
-    char* draw = (char*)malloc(6);
-    unsigned int seed = time(nullptr);
-    int randomIndex;
-    do {
-        randomIndex = rand_r(&seed) % words.recordCount;
-    } while (words.wordlist[randomIndex].guessed == true);
-
-    printf("Wylosowany indeks: %d\n", randomIndex);
-
-    strcpy(draw, words.wordlist[randomIndex].word);
-
-    return draw;
-}
-
-bool game(const WordsList words, const bool hardmode) {
-    bool* missedLetters = (bool*)malloc(26);
-    for (int i=0;i<26;i++) {
-        missedLetters[i] = false;
-    }
+bool game(WordlistMetadata data, bool hardmode) {
     char* guess = (char*)malloc(10);
-    char* drawnWord = (char*)malloc(6);
-    //strcpy(drawnWord, words.wordlist[6].word);
-    strcpy(drawnWord, drawWord(words));
-    LetterPlacement* letterPlacementInfo = (LetterPlacement*)malloc(5*sizeof(LetterPlacement));
-    for (int i=0; i<5;i++) {
-        letterPlacementInfo[i].correct = false;
-        letterPlacementInfo[i].misplaced = '0';
+    char* drawn = (char*)malloc(6);
+    strcpy(drawn, drawWord(data));
+
+    LetterPlacementInfo letterPlacement;
+    letterPlacement.correct = (bool*)malloc(5);
+    letterPlacement.missed = (bool*)malloc(26);
+    letterPlacement.misplaced = (char*)malloc(5);
+    for (int i = 0; i < 26; i++) {
+        if (i<5) {
+            letterPlacement.correct[i] = false;
+            letterPlacement.misplaced[i] = '0';
+        }
+        letterPlacement.missed[i] = false;
     }
 
-    if(hardmode) {
+    if (hardmode) {
         printf("Wybrano tryb trudny.\n");
+    } else {
+        printf("Wybrano tryb łatwy.\n");
     }
-    else
-        printf("Wybrano tryb latwy\n");
 
-    for(int guesses=6; guesses > 0; guesses--) {
-        printf("Wpisz 5-literowe slowo. Masz %d prob.\n", guesses);
+    for (int guesses = 6; guesses > 0; guesses--) {
+        printf("Wpisz 5-literowe słowo. Masz jeszcze: %d prób.\n", guesses);
         scanf("%s", guess);
-        if(strlen(guess) != 5 || findGuessInWordlist(guess, words) == -1) {
+
+        if (strlen(guess) != 5 || findGuess(guess, data) == -1) {
             guesses++;
-            printf("Podane przez ciebie slowo nie ma 5 liter lub nie znajduje sie w bazie\n");
+            printf("Podane przez ciebie słowo nie ma 5 liter lub nie znajduje się w bazie programu. Spróbuj jeszcze raz!\n");
             continue;
         }
-        if(strcmp(guess, drawnWord) == 0) {
-            printf("Gratulacje! Odgadles slowo.\n");
-            words.wordlist[findGuessInWordlist(guess,words)].guessed = true;
+
+        if (strcmp(guess, drawn) == 0) {
+            printf("Gratulacje! Odgadłeś prawidłowe słowo.\n");
+            data.wordlist[findGuess(guess, data)].guessed = true;
             return true;
         }
-        else {
+
+        if (!isValidGuess(guess, drawn, data, letterPlacement, hardmode)) {
             if (hardmode) {
-                if (!enforceHint(guess, drawnWord, letterPlacementInfo, &missedLetters)) {
-                    guesses++;
-                    printf("Zastosuj sie do podanych wskazowek!\n");
-                }
+                guesses++;
+                printf("Zastosuj się do podanych wskazówek!\n");
             }
             else {
-                for (int i=0;i<5;i ++) {
-                    if (guess[i] == drawnWord[i]) {
-                        letterPlacementInfo[i].correct = true;
-                        letterPlacementInfo[i].misplaced = '0';
-                    }
-                    else if (findLetterInWord(guess[i], drawnWord,letterPlacementInfo) != -1) {
-                        letterPlacementInfo[i].correct = false;
-                        letterPlacementInfo[i].misplaced = guess[i];
-                    }
-                    else {
-                        if (letterPlacementInfo[i].correct || letterPlacementInfo[i].misplaced != '0')
-                            missedLetters[guess[i]-'a'] = false;
-                        else
-                            missedLetters[guess[i]-'a'] = true;
-                    }
-                }
-
-                displayHint(guess,drawnWord,letterPlacementInfo);
+                printFeedback(guess, data, letterPlacement);
             }
         }
     }
+
     printf("Koniec gry!\n");
     return false;
 }
 
-void initiateGame(const WordsList words) {
-    char mode;
-    bool continueGame;
-    printf("***LITERALNIE***\n\n");
 
-    do {
-        continueGame=false;
-        fflush(stdin); // clearing input buffer - in case of lack of compiler support for this function comment it and uncomment clearStdin() below
-        //clearStdin();
-        printf("Wybierz tryb gry: \n- wpisz \"l\" by wybrac tryb latwy\n- wpisz \"t\" by wybrac tryb trudny\n: ");
-        scanf("%c", &mode);
+void printWordlist(WordlistMetadata data) {
+    if (data.recordCount <= 0) {
+        return;
+    }
+    printf("Baza zapisanych w programie słów (ilość rekordów: %d):\n",data.recordCount);
+    while (data.wordlist->word) {
+        printf("Słowo: %s, Czy odgadnięte: %s\n", data.wordlist->word, data.wordlist->guessed ? "tak" : "nie");
+        data.wordlist++;
+    }
+}
 
-        switch(mode) {
-            case 'l':
-                if(!game(words, false))
-                    return;
-                break;
-            case 't':
-                if(!game(words, true))
-                    return;
-                break;
-            case 'w':
-                printWordlist(words);
-                break;
-            default:
-                printf("help");
+
+
+void freeWordlistMetadata(WordlistMetadata wordlistMetadata) {
+    for (int i=0; i < wordlistMetadata.recordCount; i++) {
+        WordMetadata* wordMetadata = &wordlistMetadata.wordlist[i];
+
+        if (wordMetadata->word != NULL) {
+            free(wordMetadata->word);
         }
-        fflush(stdin);
-        //clearStdin();
-        printf("Czy chcesz kontynuowac gre? (t/n): ");
-        scanf("%c", &mode);
-        if(mode == 't')
-            continueGame=true;
-    } while(continueGame);
-}
-
-
-void printWordlist(WordsList words) {
-    printf("Baza slow zapisanych w bazie programu:\n");
-    while(words.wordlist->word) {
-        printf("Slowo: %s, odgadniete: %s\n", words.wordlist->word, words.wordlist->guessed ? "tak" : "nie");
-        words.wordlist++;
+        if (wordMetadata->lettersCount != NULL) {
+            free(wordMetadata->lettersCount);
+        }
     }
-}
-
-
-void freeWordlist(Words** wordlist) {
-    while((*wordlist)->word) {
-        free((*wordlist)->word);
-        (*wordlist)->word = nullptr;
-        (*wordlist)++;
+    if (wordlistMetadata.wordlist != NULL) {
+        free(wordlistMetadata.wordlist);
     }
-    free(*wordlist);
-    *wordlist = nullptr;
 }
 
 void clearStdin() {
     int c;
-    while( (c = getchar()) != '\n' && c != EOF) {}
+    while ((c = getchar()) != '\n' && c != EOF);
+}
+
+void initiateGame(WordlistMetadata data) {
+    char mode;
+    bool continueGame;
+    printf("***LITERALNIE***\n");
+
+    do {
+        continueGame = false;
+        printf("Wybierz tryb gry: \n- wpisz \"l\" by wybrać tryb łatwy\n- wpisz \"t\" by wybrać tryb trudny\n: ");
+        scanf("%c", &mode);
+
+        switch (mode) {
+            case 'l':
+                if (!game(data, false))
+                    return;
+                break;
+            case 't':
+                if (!game(data, true))
+                    return;
+                break;
+            case 'w':
+                printWordlist(data);
+                break;
+            default:
+                printf("Tu będzie pomoc.\n");
+        }
+
+        fflush(stdin);
+        clearStdin();
+        printf("Czy chcesz kontynuować grę? (t/n): ");
+        scanf("%c", &mode);
+        if (mode == 't') {
+            continueGame = true;
+        }
+        fflush(stdin);
+        clearStdin();
+    } while (continueGame);
+}
+
+
+int main(void) {
+    setlocale(LC_ALL, "UTF-8.pl_PL");
+    WordlistMetadata data = readWordlist("slownik.txt");
+    //printWordlist(data);
+    initiateGame(data);
+    freeWordlistMetadata(data);
+    return 0;
 }
